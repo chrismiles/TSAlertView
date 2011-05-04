@@ -81,31 +81,66 @@
 
 @interface TSAlertViewController : UIViewController
 {
+	CGRect keyboardFrame;
 }
 @end
 
 @implementation TSAlertViewController
+
+- (void)viewDidLoad
+{
+	[super viewDidLoad];
+	
+	[[NSNotificationCenter defaultCenter] addObserver: self selector: @selector( onKeyboardWillShow:) name: UIKeyboardWillShowNotification object: nil];
+	[[NSNotificationCenter defaultCenter] addObserver: self selector: @selector( onKeyboardWillHide:) name: UIKeyboardWillHideNotification object: nil];
+}
+
+- (void)viewDidUnload
+{
+	[super viewDidUnload];
+	
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 - (BOOL) shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation
 {
 	return YES;
 }
+
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation duration:(NSTimeInterval)duration
 {
 	TSAlertView* av = [self.view.subviews lastObject];
 	if (!av || ![av isKindOfClass:[TSAlertView class]])
 		return;
+	
+	CGRect kbRect = [self.view convertRect:keyboardFrame fromView:self.view.window];
+	CGRect contentBounds = self.view.bounds;
+	contentBounds.size.height -= kbRect.size.height;
+	
 	// resize the alertview if it wants to make use of any extra space (or needs to contract)
 	[UIView animateWithDuration:duration 
 					 animations:^{
 						 [av sizeToFit];
-						 av.center = CGPointMake( CGRectGetMidX( self.view.bounds ), CGRectGetMidY( self.view.bounds ) );;
+						 av.center = CGPointMake( CGRectGetMidX( contentBounds ), CGRectGetMidY( contentBounds ) );
 						 av.frame = CGRectIntegral( av.frame );
 					 }];
 }
 
+- (void) onKeyboardWillShow: (NSNotification*) note
+{
+	NSValue* v = [note.userInfo objectForKey: UIKeyboardFrameEndUserInfoKey];
+	keyboardFrame = [v CGRectValue];
+}
+
+- (void) onKeyboardWillHide: (NSNotification*) note
+{
+	keyboardFrame = CGRectZero;
+}
+
 - (void) dealloc
 {
-	NSLog( @"TSAlertView: TSAlertViewController dealloc" );
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+
 	[super dealloc];
 }
 
@@ -626,14 +661,27 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 	[self dismissWithClickedButtonIndex: buttonIndex  animated: YES];
 }
 
+- (BOOL)isLandscapeAndiPhone
+{
+	if (UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPad) {
+		if (UIInterfaceOrientationIsLandscape([UIApplication sharedApplication].statusBarOrientation)) {
+			return YES;
+		}
+	}
+	return NO;
+}
+
 - (CGSize) recalcSizeAndLayout: (BOOL) layout
 {
 	BOOL	stacked = !(self.buttonLayout == TSAlertViewButtonLayoutNormal && [self.buttons count] == 2 );
 	
+	// Message cannot fit if orientation is Landscape on iPhone and the keyboard will be presented
+	BOOL canFitMessage = !([self isLandscapeAndiPhone] && self.style == TSAlertViewStyleInput);
+
 	CGFloat maxWidth = self.width - (kTSAlertView_LeftMargin * 2);
 	
 	CGSize  titleLabelSize = [self titleLabelSize];
-	CGSize  messageViewSize = [self messageLabelSize];
+	CGSize  messageViewSize = (canFitMessage ? [self messageLabelSize] : CGSizeZero);
 	CGSize  inputTextFieldSize = [self inputTextFieldSize];
 	CGSize  buttonsAreaSize = stacked ? [self buttonsAreaSize_Stacked] : [self buttonsAreaSize_SideBySide];
 	
@@ -668,21 +716,28 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 		// message
 		if ( self.message != nil )
 		{
-			if ( self.usesMessageTextView )
-			{
-				self.messageTextView.frame = CGRectMake( kTSAlertView_LeftMargin, y, messageViewSize.width, messageViewSize.height );
-				[self addSubview: self.messageTextView];
-				y += messageViewSize.height + kTSAlertView_RowMargin;
-				
-				UIImageView* maskImageView = [self messageTextViewMaskView];
-				maskImageView.frame = self.messageTextView.frame;
-				[self addSubview: maskImageView];
+			if (canFitMessage) {
+				if ( self.usesMessageTextView )
+				{
+					self.messageTextView.frame = CGRectMake( kTSAlertView_LeftMargin, y, messageViewSize.width, messageViewSize.height );
+					[self addSubview: self.messageTextView];
+					y += messageViewSize.height + kTSAlertView_RowMargin;
+					
+					UIImageView* maskImageView = [self messageTextViewMaskView];
+					maskImageView.frame = self.messageTextView.frame;
+					[self addSubview: maskImageView];
+				}
+				else
+				{
+					self.messageLabel.frame = CGRectMake( kTSAlertView_LeftMargin, y, messageViewSize.width, messageViewSize.height );
+					[self addSubview: self.messageLabel];
+					y += messageViewSize.height + kTSAlertView_RowMargin;
+				}
 			}
-			else
-			{
-				self.messageLabel.frame = CGRectMake( kTSAlertView_LeftMargin, y, messageViewSize.width, messageViewSize.height );
-				[self addSubview: self.messageLabel];
-				y += messageViewSize.height + kTSAlertView_RowMargin;
+			else {
+				// Message was requested but cannot be fit
+				[self.messageLabel removeFromSuperview];
+				[self.messageTextView removeFromSuperview];
 			}
 		}
 		
