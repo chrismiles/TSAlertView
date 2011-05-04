@@ -74,8 +74,8 @@
 - (CGSize) titleLabelSize;
 - (CGSize) messageLabelSize;
 - (CGSize) inputTextFieldSize;
-- (CGSize) buttonsAreaSize_Stacked;
-- (CGSize) buttonsAreaSize_SideBySide;
+- (CGSize) buttonsAreaSize_StackedForButtonHeight:(CGFloat)buttonHeight;
+- (CGSize) buttonsAreaSize_SideBySideForButtonHeight:(CGFloat)buttonHeight;
 - (CGSize) recalcSizeAndLayout: (BOOL) layout;
 @end
 
@@ -331,9 +331,9 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 	{
 		CGPoint c = self.center;
 		
-		if ( self.frame.size.height > kbframe.origin.y - 20 )
+		if ( self.frame.size.height > kbframe.origin.y - 5 )
 		{
-			self.maxHeight = kbframe.origin.y - 20;
+			self.maxHeight = kbframe.origin.y - 5;
 			[self sizeToFit];
 			[self layoutSubviews];
 		}
@@ -674,7 +674,12 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 - (CGSize) recalcSizeAndLayout: (BOOL) layout
 {
 	BOOL	stacked = !(self.buttonLayout == TSAlertViewButtonLayoutNormal && [self.buttons count] == 2 );
-	
+
+	CGFloat buttonHeight = [[self.buttons objectAtIndex:0] sizeThatFits: CGSizeZero].height;
+	if ([self isLandscapeAndiPhone]) {
+		buttonHeight *= 0.8;	// shorter buttons on iPhone landscape orientation
+	}
+
 	// Message cannot fit if orientation is Landscape on iPhone and the keyboard will be presented
 	BOOL canFitMessage = !([self isLandscapeAndiPhone] && self.style == TSAlertViewStyleInput);
 
@@ -683,11 +688,14 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 	CGSize  titleLabelSize = [self titleLabelSize];
 	CGSize  messageViewSize = (canFitMessage ? [self messageLabelSize] : CGSizeZero);
 	CGSize  inputTextFieldSize = [self inputTextFieldSize];
-	CGSize  buttonsAreaSize = stacked ? [self buttonsAreaSize_Stacked] : [self buttonsAreaSize_SideBySide];
+	CGSize  buttonsAreaSize = stacked ? [self buttonsAreaSize_StackedForButtonHeight:buttonHeight] : [self buttonsAreaSize_SideBySideForButtonHeight:buttonHeight];
 	
 	CGFloat inputRowHeight = self.style == TSAlertViewStyleInput ? inputTextFieldSize.height + kTSAlertView_RowMargin : 0;
 	
-	CGFloat totalHeight = kTSAlertView_TopMargin + titleLabelSize.height + kTSAlertView_RowMargin + messageViewSize.height + inputRowHeight + kTSAlertView_RowMargin + buttonsAreaSize.height + kTSAlertView_BottomMargin;
+	CGFloat totalHeight = kTSAlertView_TopMargin + titleLabelSize.height + kTSAlertView_RowMargin + inputRowHeight + buttonsAreaSize.height + kTSAlertView_BottomMargin;
+	if (canFitMessage) {
+		totalHeight += kTSAlertView_RowMargin + messageViewSize.height;
+	}
 	
 	if ( totalHeight > self.maxHeight )
 	{
@@ -750,7 +758,6 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 		}
 		
 		// buttons
-		CGFloat buttonHeight = [[self.buttons objectAtIndex:0] sizeThatFits: CGSizeZero].height;
 		if ( stacked )
 		{
 			CGFloat buttonWidth = maxWidth;
@@ -810,27 +817,21 @@ const CGFloat kTSAlertView_ColumnMargin = 10.0;
 	return CGSizeMake( maxWidth, s.height );
 }
 
-- (CGSize) buttonsAreaSize_SideBySide
+- (CGSize) buttonsAreaSize_SideBySideForButtonHeight:(CGFloat)buttonHeight
 {
 	CGFloat maxWidth = self.width - (kTSAlertView_LeftMargin * 2);
 	
-	CGSize bs = [[self.buttons objectAtIndex:0] sizeThatFits: CGSizeZero];
-	
-	bs.width = maxWidth;
+	CGSize bs = CGSizeMake(maxWidth, buttonHeight);
 	
 	return bs;
 }
 
-- (CGSize) buttonsAreaSize_Stacked
+- (CGSize) buttonsAreaSize_StackedForButtonHeight:(CGFloat)buttonHeight
 {
 	CGFloat maxWidth = self.width - (kTSAlertView_LeftMargin * 2);
 	int buttonCount = [self.buttons count];
-	
-	CGSize bs = [[self.buttons objectAtIndex:0] sizeThatFits: CGSizeZero];
-	
-	bs.width = maxWidth;
-	
-	bs.height = (bs.height * buttonCount) + (kTSAlertView_RowMargin * (buttonCount-1));
+		
+	CGSize bs = CGSizeMake(maxWidth, (buttonHeight * buttonCount) + (kTSAlertView_RowMargin * (buttonCount-1)));
 	
 	return bs;
 }
